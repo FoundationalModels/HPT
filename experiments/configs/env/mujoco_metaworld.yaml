@@ -12,7 +12,8 @@ dataset_generator_func:
 rollout_runner:
   _target_: env.mujoco.metaworld.rollout_runner.RolloutRunner
   episode_num: 50
-  env_names: ["reach-v2", "push-v2", "button-press-topdown-v2", "door-open-v2" ]
+  #env_names: ["reach-v2", "push-v2", "button-press-topdown-v2", "door-open-v2" ]
+  env_names: "all"
   save_video: True
 
 

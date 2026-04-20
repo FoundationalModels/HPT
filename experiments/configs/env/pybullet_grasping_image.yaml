@@ -1,0 +1,27 @@
+# @package _global_
+# PyBullet Grasping Image (paper pre-training dataset)
+# Embodiment note: embodiment mapping not specified in HPT; kept generic here.
+
+cross_validate: False
+
+dataset_generator_func:
+  _target_: env.pybullet.grasping_image.rollout_runner.generate_dataset_rollouts
+  env_names: ["grasping_image_default"]
+  max_total_transition: 500000
+  episode_num_pertask: ${dataset.episode_cnt}
+  save_video: False
+  use_image: True
+
+rollout_runner:
+  _target_: env.pybullet.grasping_image.rollout_runner.RolloutRunner
+  episode_num: 50
+  env_names: ["grasping_image_default"]
+  save_video: True
+
+train:
+  total_epochs: 1000
+  total_iters: 20000
+  epoch_iters: 1000
+  validation_iters: 100
+
+domains: pybullet_grasping_image

@@ -1,0 +1,27 @@
+# @package _global_
+# Drake Toulouse / Fleet-Tools (paper pre-training dataset)
+# Embodiment note: potentially multiple embodiments; kept generic pending dataset release details.
+
+cross_validate: False
+
+dataset_generator_func:
+  _target_: env.drake.toulouse.rollout_runner.generate_dataset_rollouts
+  env_names: ["fleet_tools_default"]
+  max_total_transition: 500000
+  episode_num_pertask: ${dataset.episode_cnt}
+  save_video: False
+  use_image: True
+
+rollout_runner:
+  _target_: env.drake.toulouse.rollout_runner.RolloutRunner
+  episode_num: 50
+  env_names: ["fleet_tools_default"]
+  save_video: True
+
+train:
+  total_epochs: 1000
+  total_iters: 20000
+  epoch_iters: 1000
+  validation_iters: 100
+
+domains: drake_toulouse

@@ -1,0 +1,27 @@
+# @package _global_
+# MuJoCo Adroit (paper pre-training dataset)
+# Embodiment note: single Adroit dexterous hand embodiment.
+
+cross_validate: False
+
+dataset_generator_func:
+  _target_: env.mujoco.adroit.rollout_runner.generate_dataset_rollouts
+  env_names: ["pen", "hammer", "door", "relocate"]
+  max_total_transition: 500000
+  episode_num_pertask: ${dataset.episode_cnt}
+  save_video: False
+  use_image: True
+
+rollout_runner:
+  _target_: env.mujoco.adroit.rollout_runner.RolloutRunner
+  episode_num: 50
+  env_names: ["pen", "hammer", "door", "relocate"]
+  save_video: True
+
+train:
+  total_epochs: 1000
+  total_iters: 20000
+  epoch_iters: 1000
+  validation_iters: 100
+
+domains: mujoco_adroit
