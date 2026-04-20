@@ -46,6 +46,7 @@ dependencies = [
         "pyvirtualdisplay==3.0",
         "rlds==0.1.8",
         "tfp-nightly==0.22.0.dev20231002",
+        "numcodecs==0.13.1",
         "zarr==2.16.1",
         "tensorflow==2.13.1",
         "tabulate==0.9.0",
