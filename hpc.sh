@@ -9,13 +9,5 @@
 #SBATCH -p gpu,preempt
 #SBATCH --gres=gpu:a100:1
 
-# Load the Tufts AI module (includes CUDA 12.2, compatible with A100/L40/H200)
-# NOTE: Does NOT work with T4 GPUs
-module load anaconda/2023.07.tuftsai
-
-# Activate conda environment
-conda activate /cluster/tufts/hrilab/hlu07/hpt310
-
-# Navigate to project and run
-cd /cluster/tufts/hrilab/hlu07/HPT
-python -m hpt.run
+singularity exec --nv /cluster/tufts/hrilab/hlu07/hpt.sif \
+  python -m hpt.run
