@@ -33,3 +33,4 @@ backup_output
 misc/wandb_data
 misc/wandb_output
 *.DS_Store
+logs/
