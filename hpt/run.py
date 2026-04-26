@@ -128,13 +128,43 @@ def run(cfg):
     n_parameters = sum(p.numel() for p in policy.parameters() if p.requires_grad)
     cfg.total_num_traj = dataset.replay_buffer.n_episodes
     policy_path = os.path.join(cfg.output_dir, "model.pth")
+    checkpoint_name = cfg.train.get("checkpoint_name", "training_state.pth")
+    checkpoint_every = int(cfg.train.get("checkpoint_every", 1))
+    resume_from = cfg.train.get("resume_from", "")
+    auto_resume = bool(cfg.train.get("auto_resume", True))
+    training_state_path = os.path.join(cfg.output_dir, checkpoint_name)
+
+    start_epoch = 0
+    global_step = 0
+    resume_path = utils.find_resume_checkpoint(
+        output_dir=cfg.output_dir,
+        checkpoint_name=checkpoint_name,
+        resume_from=resume_from,
+        pretrained_dir=cfg.train.pretrained_dir,
+        auto_resume=auto_resume,
+    )
+    if len(resume_path) > 0:
+        state_info = utils.load_training_state(
+            checkpoint_path=resume_path,
+            model=policy,
+            optimizer=opt,
+            scheduler=sch,
+            map_location=device,
+            strict=True,
+        )
+        if state_info["restored"]:
+            start_epoch = int(state_info["epoch"])
+            global_step = int(state_info["global_step"])
+            print(f"resumed training state from {resume_path} at epoch={start_epoch} step={global_step}")
+
     print(f"Epoch size: {epoch_size} Traj: {cfg.total_num_traj} Train: {len(dataset)} Test: {len(val_dataset)}")
 
     # train / test loop
-    pbar = trange(MAX_EPOCHS, position=0)
+    pbar = trange(start_epoch, MAX_EPOCHS, position=0)
     for epoch in pbar:
         train_stats = train_test.train(cfg.log_interval, policy, device, train_loader, opt, sch, epoch)
-        train_steps = (epoch + 1) * len(train_loader)
+        global_step += len(train_loader)
+        train_steps = global_step
 
         if epoch % TEST_FREQ == 0:
             test_loss = train_test.test(policy, device, test_loader, epoch)
@@ -143,7 +173,20 @@ def run(cfg):
         if "loss" in train_stats:
             print(f"Steps: {train_steps}. Train loss: {train_stats['loss']:.4f}. Test loss: {test_loss:.4f}")
 
-        policy.save(policy_path)
+        should_save_checkpoint = checkpoint_every > 0 and (
+            (epoch + 1) % checkpoint_every == 0 or train_steps >= cfg.train.total_iters
+        )
+        if should_save_checkpoint:
+            policy.save(policy_path)
+            utils.save_training_state(
+                checkpoint_path=training_state_path,
+                model=policy,
+                optimizer=opt,
+                scheduler=sch,
+                epoch=epoch + 1,
+                global_step=train_steps,
+            )
+
         if train_steps > cfg.train.total_iters:
             break
 
