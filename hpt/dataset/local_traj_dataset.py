@@ -6,7 +6,7 @@ import numpy as np
 import copy
 
 from hpt.utils.replay_buffer import ReplayBuffer
-from hpt.utils.sampler import SequenceSampler, get_val_mask
+from hpt.utils.sampler import SequenceSampler, downsample_mask
 from hpt.utils.normalizer import LinearNormalizer
 from hpt.utils import utils
 
@@ -161,6 +161,9 @@ class LocalTrajDataset:
         data_augment_ratio: int = 1,
         proprioception_expand: bool = False,
         proprioception_expand_dim: int = 1,
+        # Optional per-split caps used by pretraining to keep each source domain bounded.
+        max_train_episodes: int = None,
+        max_val_episodes: int = None,
         **kwargs,
     ):
         self.dataset_name = dataset_name.strip()
@@ -177,6 +180,8 @@ class LocalTrajDataset:
         self.data_augment_ratio = data_augment_ratio
         self.proprioception_expand_dim = proprioception_expand_dim
         self.proprioception_expand = proprioception_expand
+        self.max_train_episodes = max_train_episodes
+        self.max_val_episodes = max_val_episodes
 
         self.precompute_feat = precompute_feat
         self.image_encoder = image_encoder
@@ -330,16 +335,44 @@ class LocalTrajDataset:
             val_ratio (float): The ratio of validation episodes to total episodes.
             seed (int): The random seed for splitting the dataset.
         """
-        # split into train and test sets
-        self.val_mask = get_val_mask(n_episodes=self.replay_buffer.n_episodes, val_ratio=val_ratio, seed=seed)
-        self.train_mask = ~self.val_mask
-        if self.train_mask.sum() == 0:
-            self.train_mask = self.val_mask
+        # Build disjoint train/validation masks, then apply optional hard caps.
+        # Validation is sampled first so max_train_episodes can downsample only
+        # from the remaining training episodes without leaking validation data.
+        total_episodes = self.replay_buffer.n_episodes
+        n_episodes = int(self.data_ratio * min(self.episode_cnt, total_episodes))
+        n_episodes = max(0, min(n_episodes, total_episodes))
 
-        # considering hyperparameters and masking
-        n_episodes = int(self.data_ratio * min(self.episode_cnt, self.replay_buffer.n_episodes))
-        self.val_mask[n_episodes:] = False
-        self.train_mask[n_episodes:] = False
+        self.train_mask = np.zeros(total_episodes, dtype=bool)
+        self.val_mask = np.zeros(total_episodes, dtype=bool)
+
+        if n_episodes > 0:
+            eligible_mask = np.zeros(total_episodes, dtype=bool)
+            eligible_mask[:n_episodes] = True
+
+            # Keep at least one train episode when possible.
+            val_target = 0
+            if val_ratio > 0 and n_episodes > 1:
+                val_target = min(max(1, round(n_episodes * val_ratio)), n_episodes - 1)
+
+            if self.max_val_episodes is not None:
+                val_target = min(val_target, int(self.max_val_episodes))
+
+            if val_target > 0:
+                rng = np.random.default_rng(seed=seed)
+                candidate_idx = np.nonzero(eligible_mask)[0]
+                val_idx = rng.choice(candidate_idx, size=val_target, replace=False)
+                self.val_mask[val_idx] = True
+
+            self.train_mask = eligible_mask & (~self.val_mask)
+
+            if self.max_train_episodes is not None:
+                self.train_mask = downsample_mask(self.train_mask, max_n=int(self.max_train_episodes), seed=seed)
+
+            if self.train_mask.sum() == 0 and self.val_mask.sum() > 0:
+                # Fallback when aggressive caps remove all train episodes.
+                first_val_idx = np.nonzero(self.val_mask)[0][0]
+                self.val_mask[first_val_idx] = False
+                self.train_mask[first_val_idx] = True
 
         # normalize and create sampler
         self.sampler = SequenceSampler(

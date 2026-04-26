@@ -72,6 +72,109 @@ def save_args_json(path, args, convert_to_vars=False):
         json.dump(args, f, indent=4, sort_keys=True)
 
 
+def _resolve_checkpoint_file_path(path: str, checkpoint_name: str = "training_state.pth") -> str:
+    """
+    Resolve a checkpoint path from either a file path or a directory path.
+    """
+    if path is None or len(path) == 0:
+        return ""
+    if os.path.isdir(path):
+        return os.path.join(path, checkpoint_name)
+    return path
+
+
+def save_training_state(
+    checkpoint_path: str,
+    model,
+    optimizer=None,
+    scheduler=None,
+    epoch: int = 0,
+    global_step: int = 0,
+    extra_state: dict = None,
+):
+    """
+    Save full training state for fault-tolerant resume.
+    """
+    mkdir_if_missing(os.path.dirname(checkpoint_path))
+    state = {
+        "epoch": int(epoch),
+        "global_step": int(global_step),
+        "model_state": model.state_dict(),
+    }
+    if optimizer is not None:
+        state["optimizer_state"] = optimizer.state_dict()
+    if scheduler is not None:
+        state["scheduler_state"] = scheduler.state_dict()
+    if extra_state is not None:
+        state["extra_state"] = extra_state
+    torch.save(state, checkpoint_path)
+
+
+def load_training_state(
+    checkpoint_path: str,
+    model,
+    optimizer=None,
+    scheduler=None,
+    map_location: str = "cpu",
+    strict: bool = True,
+):
+    """
+    Load full training state and restore model/optimizer/scheduler.
+
+    Returns:
+        dict with keys: epoch, global_step, restored.
+    """
+    if checkpoint_path is None or (not os.path.exists(checkpoint_path)):
+        return {"epoch": 0, "global_step": 0, "restored": False}
+
+    state = torch.load(checkpoint_path, map_location=map_location)
+    model.load_state_dict(state["model_state"], strict=strict)
+
+    if optimizer is not None and "optimizer_state" in state:
+        optimizer.load_state_dict(state["optimizer_state"])
+    if scheduler is not None and "scheduler_state" in state:
+        scheduler.load_state_dict(state["scheduler_state"])
+
+    return {
+        "epoch": int(state.get("epoch", 0)),
+        "global_step": int(state.get("global_step", 0)),
+        "restored": True,
+        "extra_state": state.get("extra_state", None),
+    }
+
+
+def find_resume_checkpoint(
+    output_dir: str,
+    checkpoint_name: str = "training_state.pth",
+    resume_from: str = "",
+    pretrained_dir: str = "",
+    auto_resume: bool = True,
+) -> str:
+    """
+    Find the best training-state checkpoint path to resume from.
+    Priority:
+    1) explicit resume_from
+    2) current output_dir checkpoint (if auto_resume)
+    3) pretrained_dir checkpoint (if auto_resume)
+    """
+    explicit = _resolve_checkpoint_file_path(resume_from, checkpoint_name)
+    if len(explicit) > 0 and os.path.exists(explicit):
+        return explicit
+
+    if not auto_resume:
+        return ""
+
+    output_ckpt = _resolve_checkpoint_file_path(output_dir, checkpoint_name)
+    if len(output_ckpt) > 0 and os.path.exists(output_ckpt):
+        return output_ckpt
+
+    pretrained_ckpt = _resolve_checkpoint_file_path(pretrained_dir, checkpoint_name)
+    if len(pretrained_ckpt) > 0 and os.path.exists(pretrained_ckpt):
+        return pretrained_ckpt
+
+    return ""
+
+
 def select_task(task_name_list):
     """
     Selects and returns the task configurations for the given task names.

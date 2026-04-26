@@ -158,3 +158,17 @@ train:
   pretrained_dir: "" # pretrained model path for testing
   freeze_trunk: True # whether to freeze the trunk during finetuning
   wandb_pretrained_dir: "" # use models pretrained on wandb
+  auto_resume: True # automatically resume full training state if checkpoint exists
+  resume_from: "" # explicit checkpoint file or directory to resume from
+  checkpoint_name: "training_state.pth" # filename for full training-state checkpoint
+  checkpoint_every: 1 # save training-state checkpoint every N epochs
+
+# pretraining config (used by hpt.run_pretrain)
+pretrain:
+  wandb_project: "hpt-pretrain"
+  max_train_trajectories_per_source: 1000
+  max_val_trajectories_per_source: 200
+  sampling_weights: [] # optional per-domain probabilities. if empty, use inverse-sqrt(#samples)
+
+# optional per-domain dataset generators (keyed by domain name)
+dataset_generators: {}

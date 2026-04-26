@@ -370,7 +370,7 @@ class Policy(nn.Module):
             if "output" in path:
                 path = path.replace("output/", "")
             path = download_from_huggingface(path[len("hf://") :])
-            self.trunk.load_state_dict(torch.load(path), strict=True)
+        self.trunk.load_state_dict(torch.load(path), strict=True)
 
     def freeze_trunk(self, num_layers: int = 0):
         """ freeze the trunk parameters in the last num_layers """
