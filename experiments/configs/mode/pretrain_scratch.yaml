@@ -1,0 +1,44 @@
+# @package _global_
+
+# Paper Section 4 default-style pretraining setup.
+script_name: "pretrain_hpt_small"
+wb_tag: "pretrain_scratch"
+
+# Comma-separated sources to pretrain on.
+# Keep only sources available in your local cache or provide dataset_generators below.
+domains: "mujoco_metaworld,mujoco_robomimic,mujoco_adroit,pybullet_trifinger,pybullet_grasping_image,drake_toulouse,isaac_arnold_image"
+
+# HPT-Small style training budget.
+dataloader:
+  batch_size: 256
+  shuffle: False
+
+val_dataloader:
+  batch_size: 256
+
+train:
+  total_iters: 80000
+  epoch_iters: 1000
+  pretrained_dir: ""
+  freeze_trunk: False
+
+# Use at most 1000 trajectories/source for train and at most 200/source for validation.
+dataset:
+  episode_cnt: 1200
+  val_ratio: 0.1666667
+
+pretrain:
+  wandb_project: "hpt-pretrain"
+  max_train_trajectories_per_source: 1000
+  max_val_trajectories_per_source: 200
+  sampling_weights: []
+
+# Define generators only for sources that need on-the-fly generation.
+# Other domains are expected to load from cached zarr datasets.
+dataset_generators:
+  mujoco_metaworld:
+    _target_: env.mujoco.metaworld.rollout_runner.generate_dataset_rollouts
+    env_names: "all"
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+    save_video: False
