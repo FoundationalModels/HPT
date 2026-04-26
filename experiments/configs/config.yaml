@@ -31,7 +31,7 @@ dataset:
   episode_cnt: 10000 # total episodes by default
   step_cnt: 100000 # total data transitions
   data_augmentation: False  # data augmentation
-  use_disk: False # use disk instead of memory to store the data
+  use_disk: True # use disk instead of memory to store the data
   pad_before: 0 # padding before the episode
   data_ratio: 1 # only use a fraction of data
   action_horizon: 8 # observation: (observation + action) is action horizon
