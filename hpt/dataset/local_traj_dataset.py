@@ -68,39 +68,40 @@ def process_dataset_step(
     dataset_name: str,
     step: dict,
     precompute: bool = False,
+    precompute_visual_features: bool = None,
+    precompute_language: bool = False,
     use_multiview: bool = False,
     use_ds: bool = False,
     image_encoder: str = "resnet",
     data_augment_ratio: float = 1.0, 
 ):
     """map dataset-specific key and values to a unified format"""
+    if precompute_visual_features is None:
+        precompute_visual_features = precompute
+
     step_dict = {}
     step_dict["action"] = np.array(step["action"])
     state = select_proprioception(step["observation"])
     if state is not None:
         step_dict["state"] = state.astype("float32")
 
-    if precompute:
-        # recompute the embeddings. ~0.5s per data
-        if "language_instruction" not in step:
-            # add dummy if there were no language instructions
-            language = ""
-        else:
-            language = step["language_instruction"]
+    # Add a dummy if there were no language instructions.
+    language = step.get("language_instruction", "")
+    images = select_image(step["observation"])
 
-        images = select_image(step["observation"])
-
-        if image_encoder == "clip":
+    if precompute_visual_features:
+        # Recompute visual embeddings. ResNet is roughly 0.5s per frame on CPU.
+        if image_encoder == "clip" and len(images) > 0:
             # get image and text embeddings together from CLIP.
             image_embeddings = []
             for image in images:
-                step_dict["language"], image_embedding = utils.get_clip_embeddings(image, language)
+                language_embedding, image_embedding = utils.get_clip_embeddings(image, language)
+                if precompute_language and "language" not in step_dict:
+                    step_dict["language"] = language_embedding
                 image_embeddings.append(image_embedding)
                 if not use_multiview:
                     break
         else:
-            # the default setting is to do separate encoding
-            step_dict["language"] = utils.get_t5_embeddings(language, per_token=True, device="cpu")
             image_embeddings = []
             for image in images:
                 image_embeddings.append(
@@ -109,15 +110,19 @@ def process_dataset_step(
                 if not use_multiview:
                     break
 
-            if len(image_embeddings) > 0:
-                step_dict["image"] = np.concatenate(image_embeddings, axis=0)
-
+        if len(image_embeddings) > 0:
+            step_dict["image"] = np.concatenate(image_embeddings, axis=0)
     else:
-        images = [utils.normalize_image_numpy(im) for im in select_image(step["observation"])]
+        images = [utils.normalize_image_numpy(im) for im in images]
         if len(images) > 0:
             image = np.concatenate(images, axis=0)
             step_dict["image"] = image
-        step_dict["language"] = utils.tokenize_language((step["language_instruction"]), per_token=True)
+
+    if precompute_language and "language" not in step_dict:
+        if precompute_visual_features:
+            step_dict["language"] = utils.get_t5_embeddings(language, per_token=True, device="cpu")
+        else:
+            step_dict["language"] = utils.tokenize_language(language)
 
     if "image" in step_dict:
         step_dict["image"] = step_dict["image"].astype("float32")
@@ -151,6 +156,8 @@ class LocalTrajDataset:
         dataset_postfix: str = "",
         dataset_encoder_postfix: str = "",
         precompute_feat: bool = False,
+        precompute_visual_features: bool = None,
+        precompute_language: bool = False,
         image_encoder: str = "resnet",
         env_rollout_fn=None,
         use_multiview: bool = False,
@@ -183,7 +190,9 @@ class LocalTrajDataset:
         self.max_train_episodes = max_train_episodes
         self.max_val_episodes = max_val_episodes
 
-        self.precompute_feat = precompute_feat
+        self.precompute_visual_features = precompute_feat if precompute_visual_features is None else precompute_visual_features
+        self.precompute_feat = self.precompute_visual_features
+        self.precompute_language = precompute_language
         self.image_encoder = image_encoder
         self.data_ratio = data_ratio
         self.use_multiview = use_multiview
@@ -284,6 +293,8 @@ class LocalTrajDataset:
                         self.dataset_name,
                         step,
                         precompute=self.precompute_feat,
+                        precompute_visual_features=self.precompute_visual_features,
+                        precompute_language=self.precompute_language,
                         image_encoder=self.image_encoder,
                         use_multiview=self.use_multiview,
                         use_ds=self.downsample_vision,

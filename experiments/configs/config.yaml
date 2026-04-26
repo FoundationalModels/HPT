@@ -37,7 +37,9 @@ dataset:
   action_horizon: 8 # observation: (observation + action) is action horizon
   observation_horizon: 1 # before observation horizon is observation
   dataset_postfix: "_traj${dataset.episode_cnt}" # postfix for the dataset
-  precompute_feat: True # precompute features using pretrained models for stems
+  precompute_feat: True # legacy alias for precompute_visual_features
+  precompute_visual_features: ${dataset.precompute_feat} # precompute visual features using pretrained models for stems
+  precompute_language: False # precompute/tokenize language features
   image_encoder: 'resnet' # which encoder to use as the pretrained model
   dataset_encoder_postfix: "_${dataset.image_encoder}" # another postfix
   use_multiview: False # use multiple camera views
