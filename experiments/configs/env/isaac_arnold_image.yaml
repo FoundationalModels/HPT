@@ -7,6 +7,8 @@ cross_validate: False
 dataset_generator_func:
   _target_: env.isaac.arnold_image.rollout_runner.generate_dataset_rollouts
   env_names: ["arnold_image_default"]
+  dataset_root: data/arnold/arnold-data
+  split: train
   max_total_transition: 500000
   episode_num_pertask: ${dataset.episode_cnt}
   save_video: False

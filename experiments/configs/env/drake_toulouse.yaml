@@ -6,7 +6,12 @@ cross_validate: False
 
 dataset_generator_func:
   _target_: env.drake.toulouse.rollout_runner.generate_dataset_rollouts
-  env_names: ["fleet_tools_default"]
+  env_names: ["hammer", "spatula", "knife", "wrench"]
+  fleet_root: external/Fleet-Tools
+  fleet_data_root: data/fleet_tools
+  processed_demo_root: data/demo_drake
+  generate: False
+  tool_idx: 0
   max_total_transition: 500000
   episode_num_pertask: ${dataset.episode_cnt}
   save_video: False

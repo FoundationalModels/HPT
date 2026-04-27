@@ -69,6 +69,8 @@ dependencies:
       - dm-reverb==0.12.0
       - dm-tree==0.1.10
       - docker-pycreds==0.4.0
+      - dotmap==1.3.30
+      - drake==1.24.0
       - easydict==1.11
       - einops==0.7.0
       - etils==1.13.0
@@ -81,6 +83,7 @@ dependencies:
       - frozenlist==1.8.0
       - fsspec==2026.3.0
       - gast==0.4.0
+      - gdown==6.0.0
       - gitdb==4.0.12
       - gitpython==3.1.46
       - glfw==2.10.0
@@ -127,6 +130,7 @@ dependencies:
       - oauthlib==3.3.1
       - omegaconf==2.3.0
       - opencv-python==4.8.1.78
+      - open3d==0.19.0
       - opt-einsum==3.4.0
       - pandas==2.3.3
       - parso==0.8.6
@@ -145,6 +149,7 @@ dependencies:
       - pyasn1-modules==0.4.2
       - pycparser==3.0
       - pygments==2.20.0
+      - pyglet==2.1.14
       - pyopengl==3.1.10
       - pyparsing==3.3.2
       - pytest==9.0.3
@@ -158,6 +163,8 @@ dependencies:
       - requests==2.33.1
       - requests-oauthlib==2.0.0
       - rlds==0.1.8
+      - robomimic==0.3.0
+      - robosuite==1.4.1
       - rpds-py==0.30.0
       - safetensors==0.7.0
       - scikit-learn==1.3.2
@@ -188,10 +195,14 @@ dependencies:
       - traitlets==5.14.3
       - transformers==4.36.0
       - transforms3d==0.4.1
+      - trifinger_simulation==2.0.0
+      - trimesh==4.12.1
       - triton==2.1.0
       - typing-extensions==4.5.0
       - tzdata==2026.1
       - urllib3==2.6.3
+      - usd-core==26.5
+      - visdom==0.2.4
       - wandb==0.16.1
       - wcwidth==0.6.0
       - werkzeug==3.1.8

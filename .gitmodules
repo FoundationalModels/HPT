@@ -1,0 +1,3 @@
+[submodule "external/Fleet-Tools"]
+	path = external/Fleet-Tools
+	url = https://github.com/FoundationalModels/Fleet-Tools.git
