@@ -7,7 +7,7 @@
 #SBATCH -N 1
 #SBATCH -n 4
 #SBATCH -p gpu,preempt
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:a100:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=hlu07@tufts.edu
 

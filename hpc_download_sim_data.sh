@@ -6,7 +6,8 @@
 #SBATCH --mem=64G
 #SBATCH -N 1
 #SBATCH -n 8
-#SBATCH -p preempt
+#SBATCH -p gpu,preempt
+#SBATCH --gres=gpu:a100:1
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=hlu07@tufts.edu
 
@@ -35,7 +36,7 @@ export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${DATA_DIR}/.cache/pip}"
 
 mkdir -p "${DATA_DIR}" "${HF_HOME}" "${PIP_CACHE_DIR}"
 
-DATASETS="${DATASETS:-robomimic,adroit,pybullet_grasping_image,pybullet_trifinger,drake_toulouse,isaac_arnold_image,maniskill}"
+DATASETS="${DATASETS:-robomimic,adroit,pybullet_trifinger,drake_toulouse,isaac_arnold_image,maniskill}"
 DATASETS="${DATASETS// /}"
 
 ROBOMIMIC_TASKS="${ROBOMIMIC_TASKS:-lift,can,square,transport,tool_hang}"
@@ -45,8 +46,7 @@ DRAKE_TASKS="${DRAKE_TASKS:-hammer,spatula,knife,wrench}"
 DRAKE_EPISODES="${DRAKE_EPISODES:-300}"
 ARNOLD_DRIVE_URL="${ARNOLD_DRIVE_URL:-https://drive.google.com/drive/folders/1yaEItqU9_MdFVQmkKA6qSvfXy_cPnKGA?usp=sharing}"
 MANISKILL_HF_REPO="${MANISKILL_HF_REPO:-haosulab/ManiSkill2}"
-PYBULLET_GRASPING_IMAGE_HF_REPO="${PYBULLET_GRASPING_IMAGE_HF_REPO:-}"
-PYBULLET_TRIFINGER_HF_REPO="${PYBULLET_TRIFINGER_HF_REPO:-}"
+PYBULLET_TRIFINGER_EPISODES="${PYBULLET_TRIFINGER_EPISODES:-1000}"
 
 contains_dataset() {
   case ",${DATASETS}," in
@@ -176,22 +176,51 @@ download_adroit() {
   done
 }
 
-download_pybullet_grasping_image() {
-  if [ -z "${PYBULLET_GRASPING_IMAGE_HF_REPO}" ]; then
-    echo "[pybullet_grasping_image] Set PYBULLET_GRASPING_IMAGE_HF_REPO to the Hugging Face dataset repo id." >&2
-    echo "[pybullet_grasping_image] Expected converted files land under ${DATA_DIR}/pybullet_grasping_image/." >&2
-    return 2
-  fi
-  download_hf_repo "${PYBULLET_GRASPING_IMAGE_HF_REPO}" "${DATA_DIR}/pybullet_grasping_image" "${PYBULLET_GRASPING_IMAGE_HF_INCLUDE:-**}"
-}
-
 download_pybullet_trifinger() {
-  if [ -z "${PYBULLET_TRIFINGER_HF_REPO}" ]; then
-    echo "[pybullet_trifinger] Set PYBULLET_TRIFINGER_HF_REPO to the Hugging Face dataset repo id." >&2
-    echo "[pybullet_trifinger] Expected converted files land under ${DATA_DIR}/pybullet_trifinger/." >&2
-    return 2
+  local tasks=("cube_reach" "cube_push" "cube_lift")
+  local all_exist=true
+  for task in "${tasks[@]}"; do
+    if [ ! -s "${DATA_DIR}/pybullet_trifinger/${task}/demo_state.npz" ]; then
+      all_exist=false
+      break
+    fi
+  done
+  if ${all_exist}; then
+    echo "[pybullet_trifinger] exists: using cached data"
+    return 0
   fi
-  download_hf_repo "${PYBULLET_TRIFINGER_HF_REPO}" "${DATA_DIR}/pybullet_trifinger" "${PYBULLET_TRIFINGER_HF_INCLUDE:-**}"
+  echo "[pybullet_trifinger] installing trifinger_simulation for online generation"
+  pip install --quiet trifinger_simulation
+  echo "[pybullet_trifinger] generating ${PYBULLET_TRIFINGER_EPISODES} episodes per task online"
+  python - <<PYEOF
+import os, sys
+sys.path.insert(0, '/workspace')
+from env.pybullet.trifinger.rollout_runner import generate_dataset_rollouts
+from hpt.dataset.local_traj_dataset import LocalTrajDataset
+
+data_dir = os.environ.get('DATA_DIR', '/workspace/data')
+for task in ['cube_reach', 'cube_push', 'cube_lift']:
+    cache = f"{data_dir}/pybullet_trifinger/{task}/demo_state.npz"
+    if os.path.exists(cache):
+        print(f"[trifinger] {task}: cached")
+        continue
+    LocalTrajDataset(
+        dataset_name='pybullet_trifinger',
+        env_rollout_fn=generate_dataset_rollouts(
+            env_names=[task],
+            dataset_root=f"{data_dir}/pybullet_trifinger",
+            online=True,
+            max_total_transition=500000,
+            episode_num_pertask=int(os.environ.get('PYBULLET_TRIFINGER_EPISODES', 1000)),
+        ),
+        use_disk=True,
+        episode_cnt=int(os.environ.get('PYBULLET_TRIFINGER_EPISODES', 1000)),
+        precompute_feat=False,
+        observation_horizon=4,
+        action_horizon=8,
+    )
+    print(f"[trifinger] {task}: done")
+PYEOF
 }
 
 fleet_env_name() {
@@ -281,9 +310,6 @@ if contains_dataset robomimic; then
 fi
 if contains_dataset adroit; then
   download_adroit
-fi
-if contains_dataset pybullet_grasping_image; then
-  download_pybullet_grasping_image
 fi
 if contains_dataset pybullet_trifinger; then
   download_pybullet_trifinger
