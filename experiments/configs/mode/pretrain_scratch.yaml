@@ -6,7 +6,7 @@ wb_tag: "pretrain_scratch"
 
 # Comma-separated sources to pretrain on.
 # Keep only sources available in your local cache or provide dataset_generators below.
-domains: "mujoco_metaworld,mujoco_robomimic,mujoco_adroit,pybullet_trifinger,pybullet_grasping_image,drake_toulouse,isaac_arnold_image"
+domains: "mujoco_metaworld,mujoco_robomimic,mujoco_adroit,pybullet_trifinger,pybullet_grasping_image,drake_toulouse,isaac_arnold_image,maniskill"
 
 # HPT-Small style training budget.
 dataloader:
@@ -42,3 +42,19 @@ dataset_generators:
     max_total_transition: 500000
     episode_num_pertask: ${dataset.episode_cnt}
     save_video: False
+  mujoco_robomimic:
+    _target_: env.mujoco.robomimic.rollout_runner.generate_dataset_rollouts
+    embodiment: franka
+    env_names: ["can", "lift", "square", "transport"]
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+    dataset_root: data/robomimic
+    dataset_type: ph
+    download: True
+    convert: True
+  maniskill:
+    _target_: env.maniskill.offline.rollout_runner.generate_dataset_rollouts
+    env_names: ["PickCube-v0"]
+    dataset_root: data/maniskill
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}

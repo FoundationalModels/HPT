@@ -11,6 +11,10 @@ dataset_generator_func:
   env_names: ["can", "lift", "square", "transport"]
   max_total_transition: 500000
   episode_num_pertask: ${dataset.episode_cnt}
+  dataset_root: data/robomimic
+  dataset_type: ph
+  download: True
+  convert: True
   save_video: False
   use_image: True
 

@@ -4,10 +4,16 @@
 
 cross_validate: False
 
+# Arnold episodes are 5 keyframes. Without padding, horizon=11 yields zero valid
+# windows (max_start = 5 - 11 + 0 = -6). pad_after = horizon-1 = action_horizon +
+# observation_horizon - 2 gives exactly 5 windows per trajectory, matching Table 4.
+dataset:
+  pad_after: 10  # action_horizon(8) + observation_horizon(4) - 2
+
 dataset_generator_func:
   _target_: env.isaac.arnold_image.rollout_runner.generate_dataset_rollouts
   env_names: ["arnold_image_default"]
-  dataset_root: data/arnold/arnold-data
+  dataset_root: data/arnold
   split: train
   max_total_transition: 500000
   episode_num_pertask: ${dataset.episode_cnt}

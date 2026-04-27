@@ -160,7 +160,7 @@ def run(cfg):
     )
     utils.set_seed(cfg.seed)
 
-    device = "cuda"
+    device = cfg.get("device", "cuda" if torch.cuda.is_available() else "cpu")
     domain_list = [d.strip() for d in cfg.domains.split(",") if len(d.strip()) > 0]
     if len(domain_list) == 0:
         raise ValueError("No domains provided. Set cfg.domains to a comma-separated list of sources.")

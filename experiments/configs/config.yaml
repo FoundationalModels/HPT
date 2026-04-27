@@ -8,6 +8,7 @@ pretrained_dir: "" # pretrained model directory
 parallel_eval: False # use ray to do parallel evaluation
 slurm_job_id: "" # the slurm job id for logging purposes
 user_id: "" # the machine user id for logging purposes
+device: ${oc.env:HPT_DEVICE,cuda} # training device; set HPT_DEVICE=cpu for local smoke tests without CUDA
 
 epoch_size: 10
 total_num_traj: 0
@@ -35,7 +36,7 @@ dataset:
   pad_before: 0 # padding before the episode
   data_ratio: 1 # only use a fraction of data
   action_horizon: 8 # observation: (observation + action) is action horizon
-  observation_horizon: 1 # before observation horizon is observation
+  observation_horizon: 4 # before observation horizon is observation
   dataset_postfix: "_traj${dataset.episode_cnt}" # postfix for the dataset
   precompute_feat: True # legacy alias for precompute_visual_features
   precompute_visual_features: ${dataset.precompute_feat} # precompute visual features using pretrained models for stems
