@@ -35,7 +35,7 @@ TASK_LANGUAGE = {
 }
 SOURCE_NOTE = (
     "Download Arnold with gdown into data/arnold/ so the task zips exist at "
-    "data/arnold/arnold-data/tasks/{task}.zip. Arnold NPZ files contain USD/Pixar "
+    "data/arnold/tasks/{task}.zip. Arnold NPZ files contain USD/Pixar "
     "objects, so the Python environment also needs usd-core installed."
 )
 RESOLUTION = (224, 224)
@@ -43,7 +43,7 @@ RESOLUTION = (224, 224)
 
 def generate_dataset_rollouts(
     env_names,
-    dataset_root="data/arnold/arnold-data",
+    dataset_root="data/arnold",
     split="train",
     max_total_transition=500000,
     episode_num_pertask=100,
@@ -78,6 +78,7 @@ def _task_zip_path(dataset_root, task):
     candidates = [
         root / "tasks" / f"{task}.zip",
         root / f"{task}.zip",
+        Path("data") / "arnold" / "tasks" / f"{task}.zip",
         Path("data") / "arnold" / "arnold-data" / "tasks" / f"{task}.zip",
     ]
     for path in candidates:
