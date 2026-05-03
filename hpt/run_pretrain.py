@@ -225,9 +225,11 @@ def run(cfg):
     trunk_path = os.path.join(cfg.output_dir, "trunk.pth")
     checkpoint_name = cfg.train.get("checkpoint_name", "training_state.pth")
     checkpoint_every = int(cfg.train.get("checkpoint_every", 1))
+    snapshot_every_iters = int(cfg.train.get("snapshot_every_iters", 0))
     resume_from = cfg.train.get("resume_from", "")
     auto_resume = bool(cfg.train.get("auto_resume", True))
     training_state_path = os.path.join(cfg.output_dir, checkpoint_name)
+    last_snapshot_step = 0
 
     start_epoch = 0
     global_step = 0
@@ -291,6 +293,22 @@ def run(cfg):
                 epoch=epoch + 1,
                 global_step=train_steps,
             )
+
+        should_save_snapshot = (
+            snapshot_every_iters > 0
+            and train_steps - last_snapshot_step >= snapshot_every_iters
+        )
+        if should_save_snapshot:
+            snapshot_path = os.path.join(cfg.output_dir, f"training_state_{train_steps:07d}.pth")
+            utils.save_training_state(
+                checkpoint_path=snapshot_path,
+                model=policy,
+                optimizer=opt,
+                scheduler=sch,
+                epoch=epoch + 1,
+                global_step=train_steps,
+            )
+            last_snapshot_step = train_steps
 
         if train_steps >= cfg.train.total_iters:
             break

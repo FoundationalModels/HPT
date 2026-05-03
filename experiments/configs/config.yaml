@@ -1,23 +1,23 @@
 seed: 42
 output_dir: ${hydra:runtime.output_dir}
-domains: mujoco_metaworld # domains to train on
+domains: mujoco_metaworld, mujoco_robomimic, mujoco_adroit, drake_toulouse, pybullet_trifinger, isaac_arnold_image, maniskill # domains to train on
 wb_tag: "default" # wandb tag
 log_interval: 10 # how many steps before logging to wandb
 script_name: "" # log the running script
 pretrained_dir: "" # pretrained model directory
-parallel_eval: False # use ray to do parallel evaluation
-slurm_job_id: "" # the slurm job id for logging purposes
-user_id: "" # the machine user id for logging purposes
+# parallel_eval: False # use ray to do parallel evaluation
+# slurm_job_id: "" # the slurm job id for logging purposes
+# user_id: "" # the machine user id for logging purposes
 device: ${oc.env:HPT_DEVICE,cuda} # training device; set HPT_DEVICE=cpu for local smoke tests without CUDA
 
-epoch_size: 10
-total_num_traj: 0
-train_time: 0
-cross_validate: False
-cross_validate_eps_num: 20
-cross_validate_freq: 100
-save_intermedia_models: False
-comment: ""
+# epoch_size: 10        # unused — derived from len(train_loader) at runtime
+# total_num_traj: 0     # unused — written at runtime for logging only
+# train_time: 0         # unused
+# cross_validate: False # unused — no Python code reads this
+# cross_validate_eps_num: 20  # unused
+# cross_validate_freq: 100    # unused
+# save_intermedia_models: False  # unused
+# comment: ""           # unused
 
 defaults:
   - _self_
@@ -47,7 +47,7 @@ dataset:
   normalize_state: True # whether to normalize the states in datasets
   regenerate: False # regenerate data
   action_multiple_horizon: True  # multiply action dimensions by horizon
-  random_mask_obs: True # whether to randomize observation input length
+  # random_mask_obs: True # unused — masking is controlled by stem.random_horizon_masking
   data_augment_ratio: 1 # add data augmentation to the images
   proprioception_expand: False # expand proprioception to use multiple tokens
   proprioception_expand_dim: 32 # expand proprioception dimensions
@@ -154,17 +154,18 @@ lr_scheduler:
 
 # training config
 train:
-  total_epochs: 500  # maximum training epochs before termination. usually set as maximum
-  total_iters: 20000 # maximum training steps before termination
+  # total_epochs: 500  # maximum training epochs before termination. usually set as maximum. Considered for finetuning only
+  total_iters: 80000 # maximum training steps before termination
   epoch_iters: 1000  # training steps in each epoch
-  validation_iters: 100 # maximum iterations for validation
+  # validation_iters: 100 # maximum iterations for validation
   pretrained_dir: "" # pretrained model path for testing
   freeze_trunk: True # whether to freeze the trunk during finetuning
   wandb_pretrained_dir: "" # use models pretrained on wandb
   auto_resume: True # automatically resume full training state if checkpoint exists
   resume_from: "" # explicit checkpoint file or directory to resume from
   checkpoint_name: "training_state.pth" # filename for full training-state checkpoint
-  checkpoint_every: 1 # save training-state checkpoint every N epochs
+  checkpoint_every: 1 # save training-state checkpoint every N epochs (overwrites same file)
+  snapshot_every_iters: 10000 # save a numbered snapshot training_state_NNNNNN.pth every N iters (0 = disabled)
 
 # pretraining config (used by hpt.run_pretrain)
 pretrain:
