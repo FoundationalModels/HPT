@@ -467,7 +467,23 @@ class ReplayBuffer:
                     self.data[key] = arr
             else:
                 arr = self.data[key]
-                assert value.shape[1:] == arr.shape[1:], f"key {key} shape issue"
+                if value.shape[1:] != arr.shape[1:]:
+                    if is_zarr and len(value.shape) == 2:
+                        # 1-D per-step features (e.g. state/proprioception) can differ
+                        # across tasks in the same domain.  Reconcile by widening the
+                        # stored array or zero-padding the incoming episode.
+                        target_dim = arr.shape[1]
+                        episode_dim = value.shape[1]
+                        if episode_dim > target_dim:
+                            # Widen zarr; new cells are zero-filled by zarr
+                            arr.resize((arr.shape[0], episode_dim))
+                            new_shape = (new_len, episode_dim)
+                        else:
+                            pad = np.zeros((value.shape[0], target_dim - episode_dim), dtype=value.dtype)
+                            value = np.concatenate([value, pad], axis=1)
+                            new_shape = (new_len, target_dim)
+                    else:
+                        raise AssertionError(f"key {key} shape issue: {value.shape[1:]} vs {arr.shape[1:]}")
                 # same method for both zarr and numpy
                 if is_zarr:
                     arr.resize(new_shape)

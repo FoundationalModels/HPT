@@ -11,7 +11,7 @@ pretrained_dir: "" # pretrained model directory
 device: ${oc.env:HPT_DEVICE,cuda} # training device; set HPT_DEVICE=cpu for local smoke tests without CUDA
 
 # epoch_size: 10        # unused — derived from len(train_loader) at runtime
-# total_num_traj: 0     # unused — written at runtime for logging only
+total_num_traj: 16_000       # written at runtime for logging only
 # train_time: 0         # unused
 # cross_validate: False # unused — no Python code reads this
 # cross_validate_eps_num: 20  # unused
@@ -21,7 +21,7 @@ device: ${oc.env:HPT_DEVICE,cuda} # training device; set HPT_DEVICE=cpu for loca
 
 defaults:
   - _self_
-  - env: mujoco_metaworld
+  - optional env: null
 
 # dataset config
 dataset:
@@ -149,12 +149,12 @@ warmup_lr:
 
 lr_scheduler:
   _target_: torch.optim.lr_scheduler.CosineAnnealingLR
-  T_max: ${train.total_epochs}
+  T_max: ${train.total_iters}
   eta_min: 1e-6
 
 # training config
 train:
-  # total_epochs: 500  # maximum training epochs before termination. usually set as maximum. Considered for finetuning only
+  total_epochs: 1000 # compatibility only; pretraining stops by total_iters
   total_iters: 80000 # maximum training steps before termination
   epoch_iters: 1000  # training steps in each epoch
   # validation_iters: 100 # maximum iterations for validation
@@ -175,4 +175,55 @@ pretrain:
   sampling_weights: [] # optional per-domain probabilities. if empty, use inverse-sqrt(#samples)
 
 # optional per-domain dataset generators (keyed by domain name)
-dataset_generators: {}
+# Used by run_pretrain.py when a domain's zarr cache does not yet exist.
+# env_rollout_fn=None is safe when the cache already exists (load_from_cache skips generation).
+dataset_generators:
+  mujoco_metaworld:
+    _target_: env.mujoco.metaworld.rollout_runner.generate_dataset_rollouts
+    env_names: all
+    save_video: false
+    max_total_transition: 500000
+    episode_num_pertask: 1200
+  mujoco_robomimic:
+    _target_: env.mujoco.robomimic.rollout_runner.generate_dataset_rollouts
+    env_names: [can, lift, square, transport, tool_hang]
+    dataset_root: data/robomimic
+    download: false
+    convert: false
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+  mujoco_adroit:
+    _target_: env.mujoco.adroit.rollout_runner.generate_dataset_rollouts
+    env_names: [door, hammer, pen, relocate]
+    download: false
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+  pybullet_trifinger:
+    _target_: env.pybullet.trifinger.rollout_runner.generate_dataset_rollouts
+    env_names: [cube_reach, cube_push, cube_lift]
+    online: true
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+  drake_toulouse:
+    _target_: env.drake.toulouse.rollout_runner.generate_dataset_rollouts
+    env_names: [hammer, spatula, knife, wrench]
+    fleet_root: external/Fleet-Tools
+    fleet_data_root: data/fleet_tools
+    processed_demo_root: data/demo_drake
+    generate: false
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+  isaac_arnold_image:
+    _target_: env.isaac.arnold_image.rollout_runner.generate_dataset_rollouts
+    env_names: [close_cabinet, close_drawer, open_cabinet, open_drawer,
+                pickup_object, pour_water, reorient_object, transfer_water]
+    dataset_root: data/arnold
+    split: train
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}
+  maniskill:
+    _target_: env.maniskill.offline.rollout_runner.generate_dataset_rollouts
+    env_names: [PickCube-v0]
+    dataset_root: data/maniskill
+    max_total_transition: 500000
+    episode_num_pertask: ${dataset.episode_cnt}

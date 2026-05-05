@@ -16,6 +16,7 @@ import zarr
 import cv2
 import traceback
 from collections import defaultdict
+import torch
 
 def select_image(observation, target_shape=(224, 224), normalize: bool = False, 
                 verbose: bool = False, resize: bool = True):
@@ -103,9 +104,10 @@ def process_dataset_step(
                     break
         else:
             image_embeddings = []
+            precompute_device = "cuda" if torch.cuda.is_available() else "cpu"
             for image in images:
                 image_embeddings.append(
-                    utils.get_image_embeddings(image, image_encoder, downsample=use_ds, device="cpu")
+                    utils.get_image_embeddings(image, image_encoder, downsample=use_ds, device=precompute_device)
                 )
                 if not use_multiview:
                     break

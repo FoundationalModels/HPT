@@ -47,7 +47,5 @@ export TORCH_HOME=/workspace/data/.cache/torch
 # config.yaml.  Generators are only invoked when a domain's zarr cache does not
 # yet exist; subsequent runs (including restarts after preemption) load the cache
 # directly and skip generation.
-python -m hpt.run_pretrain \
-  script_name=hpc_pretrain_all_data \
-  wb_tag=hpc_pretrain_all_data
+python -m hpt.run_pretrain
 IN_CONTAINER
