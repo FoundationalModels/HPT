@@ -18,6 +18,7 @@ from tqdm import trange
 
 from hpt import train_test
 from hpt.utils import utils
+from hpt.utils.power_monitor import PowerMonitor
 from hpt.utils.warmup_lr_wrapper import WarmupLR
 
 MAX_EPOCHS = 100000
@@ -257,6 +258,10 @@ def run(cfg):
     print(f"Epoch size: {len(train_loader)} Traj(train total): {total_traj}")
     print(f"Domain batch probs: {batch_sampler.domain_probs.tolist()}")
 
+    gpu_indices = [device.index] if isinstance(device, torch.device) and device.type == "cuda" else None
+    power_monitor = PowerMonitor(gpu_indices=gpu_indices, sample_interval=1.0)
+    power_monitor.start()
+
     # train / test loop
     pbar = trange(start_epoch, MAX_EPOCHS, position=0)
     for epoch in pbar:
@@ -278,6 +283,11 @@ def run(cfg):
 
         if "loss" in train_stats:
             print(f"Steps: {train_steps}. Train loss: {train_stats['loss']:.4f}")
+
+        power_stats = power_monitor.read_and_reset()
+        if power_stats:
+            wandb.log({"power/epoch": epoch, "power/step": train_steps,
+                       **{f"power/{k}": v for k, v in power_stats.items()}})
 
         should_save_checkpoint = checkpoint_every > 0 and (
             (epoch + 1) % checkpoint_every == 0 or train_steps >= cfg.train.total_iters
@@ -312,6 +322,17 @@ def run(cfg):
 
         if train_steps >= cfg.train.total_iters:
             break
+
+    power_monitor.stop()
+    summary = power_monitor.summary_str()
+    print(summary)
+    summary_file = os.path.join(cfg.output_dir, "power_summary.txt")
+    with open(summary_file, "w") as f:
+        f.write(summary + "\n")
+    cumulative_power = power_monitor.cumulative_stats()
+    if cumulative_power:
+        wandb.log({"power/total_step": train_steps,
+                   **{f"power/{k}": v for k, v in cumulative_power.items()}})
 
     print("model saved to:", model_path)
     print("trunk saved to:", trunk_path)

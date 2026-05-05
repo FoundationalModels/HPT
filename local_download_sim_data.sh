@@ -2,18 +2,19 @@
 set -euo pipefail
 
 REPO_DIR=${REPO_DIR:-$(cd "$(dirname "$0")" && pwd)}
-DATA_DIR=${DATA_DIR:-/media/hrilab/HelenMacPc}
+DRIVE_ROOT=${DRIVE_ROOT:-/media/hrilab/HelenMacPc}
+DATA_DIR=${DATA_DIR:-${DRIVE_ROOT}/data}
 
-if [ ! -d "${DATA_DIR}" ]; then
-  echo "ERROR: data dir not found: ${DATA_DIR}" >&2
+if [ ! -d "${DRIVE_ROOT}" ]; then
+  echo "ERROR: external drive not found: ${DRIVE_ROOT}" >&2
   echo "Make sure the external drive is mounted before running this script." >&2
   exit 1
 fi
 
 export DATA_DIR
-export HF_HOME="${HF_HOME:-${DATA_DIR}/.cache/huggingface}"
+export HF_HOME="${HF_HOME:-${DRIVE_ROOT}/.cache/huggingface}"
 export HF_HUB_CACHE="${HF_HUB_CACHE:-${HF_HOME}/hub}"
-export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${DATA_DIR}/.cache/pip}"
+export PIP_CACHE_DIR="${PIP_CACHE_DIR:-${DRIVE_ROOT}/.cache/pip}"
 export HYDRA_FULL_ERROR=1
 
 mkdir -p "${DATA_DIR}" "${HF_HOME}" "${PIP_CACHE_DIR}"
@@ -38,7 +39,8 @@ METAWORLD_TASKS="${METAWORLD_TASKS:-all}"
 METAWORLD_EPISODES="${METAWORLD_EPISODES:-1200}"
 METAWORLD_MAX_TOTAL_TRANSITION="${METAWORLD_MAX_TOTAL_TRANSITION:-500000}"
 DRAKE_TASKS="${DRAKE_TASKS:-hammer,spatula,knife,wrench}"
-DRAKE_EPISODES="${DRAKE_EPISODES:-300}"
+DRAKE_EPISODES="${DRAKE_EPISODES:-$(( 925 / 4 ))}"  # 231 per tool × 4 tools ≈ 925 total
+DRAKE_NUM_ENVS="${DRAKE_NUM_ENVS:-20}"
 ARNOLD_DRIVE_URL="${ARNOLD_DRIVE_URL:-https://drive.google.com/drive/folders/1yaEItqU9_MdFVQmkKA6qSvfXy_cPnKGA?usp=sharing}"
 MANISKILL_HF_REPO="${MANISKILL_HF_REPO:-haosulab/ManiSkill2}"
 PYBULLET_TRIFINGER_EPISODES="${PYBULLET_TRIFINGER_EPISODES:-1000}"
@@ -129,7 +131,7 @@ download_hf_repo() {
   ensure_huggingface_cli
   mkdir -p "${target_dir}"
   echo "[huggingface] ${repo_id} -> ${target_dir} (${include_pattern})"
-  huggingface-cli download "${repo_id}" \
+  hf downloadload "${repo_id}" \
     --repo-type dataset \
     --include "${include_pattern}" \
     --local-dir "${target_dir}"
@@ -378,19 +380,20 @@ download_drake_toulouse() {
         break
       fi
 
-      batch=$(( DRAKE_EPISODES < 100 ? DRAKE_EPISODES : 100 ))
       start_pos=$(max_drake_episode_num "${demo_dir}")
       # Recount immediately before launching to avoid off-by-one if disk changed since top of loop.
       remaining=$(( DRAKE_EPISODES - $(count_drake_demos "${demo_dir}") ))
-      echo "[fleet-tools] ${task}: running up to ${batch} more episodes (start_episode_position=${start_pos}, need=${remaining})"
+      echo "[fleet-tools] ${task}: running up to ${remaining} more episodes (start_episode_position=${start_pos})"
 
       # Temporarily disable exit-on-error so a segfault doesn't kill the script.
+      # If Drake segfaults mid-batch, the while loop restarts from however many
+      # demos were saved, so there is no need to artificially cap num_episode.
       set +e
       python -m core.run \
-        cuda=False \
+        cuda=True \
         render=False \
         env_name="${env_name}" \
-        num_envs=1 \
+        num_envs="${DRAKE_NUM_ENVS}" \
         run_expert=True \
         save_demonstrations=True \
         demonstration_dir="${raw_demo_root}" \
@@ -401,15 +404,17 @@ download_drake_toulouse() {
         save_demo_suffix=tool_0 \
         task.tool_fix_idx=0 \
         max_episodes="${remaining}" \
-        num_episode="${batch}" \
+        num_episode="${remaining}" \
         record_video=False \
         training=False \
         +task.data_collection=True \
-        task.env.use_image=False
+        task.env.use_image=False \
+        task.env.randomize_camera_extrinsics=True
       run_exit=$?
       set -e
 
-      total_attempts=$(( total_attempts + batch ))
+      # Each attempt runs across DRAKE_NUM_ENVS parallel environments.
+      total_attempts=$(( total_attempts + remaining * DRAKE_NUM_ENVS ))
 
       if [ "${run_exit}" -ne 0 ]; then
         echo "[fleet-tools] ${task}: run exited with code ${run_exit} (likely Drake segfault), retrying..."
@@ -422,14 +427,87 @@ download_drake_toulouse() {
       continue
     fi
 
+    processed_npz="${processed_root}/${task}for${task}tool_0/demo_state.npz"
+    if [ -f "${processed_npz}" ] && [ "${processed_npz}" -nt "${demo_dir}" ]; then
+      echo "[fleet-tools] ${task}: processed data is up to date — skipping collapse"
+      continue
+    fi
+
     echo "[fleet-tools] collapsing ${task} (${existing_demos} demos)"
-    python -m scripts.collapse_dataset \
-      -e "${task}for${task}" \
-      --tool 0 \
-      --max_num "$((DRAKE_EPISODES * 200))" \
-      --saved_path "${raw_demo_root}" \
-      --output_path "${processed_root}" \
-      --processed_output_path "${processed_demo_root}"
+    # Replaces the buggy collapse_dataset.py (nested-loop bug creates N copies
+    # of one episode → OOM on concatenate).
+    # overhead_image / wrist_image are resized to 224×224 uint8 here so that
+    # iter_npz_episodes ("image" in key) can pass them to select_image → ResNet
+    # precomputation. Resizing at collapse time keeps the NPZ to ~5 GB instead
+    # of ~100 GB (512×512 float32).
+    python3 - \
+      "${raw_demo_root}" \
+      "${task}for${task}" \
+      "0" \
+      "${processed_root}" \
+      "${processed_demo_root}" \
+      <<'PYEOF'
+import sys
+import cv2
+import numpy as np
+from pathlib import Path
+
+saved_root, env_name, tool_idx_str, proc_root, demo_root = \
+    sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
+task = env_name.split("for")[0]
+tool_idx = int(tool_idx_str)
+
+src_dir = Path(saved_root) / f"{env_name}tool_{tool_idx}"
+out1    = Path(proc_root)  / f"{env_name}tool_{tool_idx}"
+out2    = Path(demo_root)  / f"FrankaDrake{task.capitalize()}Env-Tool{tool_idx}"
+
+# Keys with raw 512×512 images: resize to 224×224 uint8 to avoid OOM.
+# offline_source_adapter.iter_npz_episodes selects keys where "image" in key.
+IMAGE_KEYS = {"overhead_image", "wrist_image"}
+IMG_SIZE = (224, 224)
+
+episode_dirs = sorted(
+    (d for d in src_dir.iterdir() if d.is_dir() and d.name.startswith("episode_")),
+    key=lambda p: int(p.name.split("_")[1]),
+)
+
+accum = {}
+count = 0
+total = len(episode_dirs)
+for ep_dir in episode_dirs:
+    npz = ep_dir / "traj_data.npz"
+    if not npz.exists():
+        continue
+    # Use context manager + per-key access so numpy decompresses one array at
+    # a time — avoids loading the full ~500 MB NPZ into RAM simultaneously.
+    with np.load(str(npz), allow_pickle=True) as ep:
+        for k in ep.files:
+            v = ep[k]
+            if k in IMAGE_KEYS:
+                # v: (T, H, W, C), float32 in [0,1] or uint8 in [0,255]
+                arr = v if v.dtype == np.uint8 else (np.clip(v, 0, 1) * 255).astype(np.uint8)
+                v = np.stack([cv2.resize(arr[t], IMG_SIZE) for t in range(arr.shape[0])])
+            accum.setdefault(k, []).append(v)
+    count += 1
+    if count % 10 == 0 or count == total:
+        print(f"[collapse] {count}/{total} episodes loaded", flush=True)
+
+if not accum:
+    print(f"[collapse] no episodes found in {src_dir}", flush=True)
+    sys.exit(0)
+
+collapsed = {}
+for k, arrays in accum.items():
+    try:
+        collapsed[k] = np.concatenate(arrays, axis=0)
+    except Exception as e:
+        print(f"[collapse] skipping key {k!r}: {e}", flush=True)
+
+for out in [out1, out2]:
+    out.mkdir(parents=True, exist_ok=True)
+    np.savez(str(out / "demo_state.npz"), **collapsed)
+    print(f"[collapse] {count} episodes -> {out}/demo_state.npz", flush=True)
+PYEOF
   done
   popd >/dev/null
 }

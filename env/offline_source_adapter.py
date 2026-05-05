@@ -185,7 +185,7 @@ def iter_npz_episodes(path, language, episode_num_pertask, max_total_transition)
     if len(done_indexes) == 0:
         done_indexes = np.array([len(action)])
 
-    image_keys = [key for key in sorted(data) if key.startswith("image")]
+    image_keys = [key for key in sorted(data) if "image" in key]
     state = select_npz_state(data)
     start = 0
     total_transitions = 0

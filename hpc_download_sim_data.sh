@@ -106,20 +106,26 @@ download_hf_repo() {
 }
 
 download_robomimic() {
+  ensure_python_module robomimic robomimic
   IFS=',' read -r -a tasks <<< "${ROBOMIMIC_TASKS}"
   for task in "${tasks[@]}"; do
-    echo "[robomimic] raw PH dataset for ${task}"
-    python -m robomimic.scripts.download_datasets \
-      --download_dir "${DATA_DIR}/robomimic" \
-      --tasks "${task}" \
-      --dataset_types ph \
-      --hdf5_types raw
-
     raw_path="${DATA_DIR}/robomimic/${task}/ph/demo_v141.hdf5"
     image_path="${DATA_DIR}/robomimic/${task}/ph/image_v141.hdf5"
+
     if [ -s "${image_path}" ]; then
-      echo "[robomimic] exists: ${image_path}"
+      echo "[robomimic] exists: ${image_path}, skipping"
       continue
+    fi
+
+    if [ ! -s "${raw_path}" ]; then
+      echo "[robomimic] raw PH dataset for ${task}"
+      python -m robomimic.scripts.download_datasets \
+        --download_dir "${DATA_DIR}/robomimic" \
+        --tasks "${task}" \
+        --dataset_types ph \
+        --hdf5_types raw
+    else
+      echo "[robomimic] raw exists: ${raw_path}, skipping download"
     fi
 
     case "${task}" in
@@ -243,6 +249,15 @@ fleet_task_config() {
   esac
 }
 
+count_drake_demos() {
+  local demo_dir="$1"
+  if [ ! -d "${demo_dir}" ]; then
+    echo 0
+    return
+  fi
+  find "${demo_dir}" -maxdepth 2 -name "traj_data.npz" | wc -l
+}
+
 download_drake_toulouse() {
   if [ ! -d external/Fleet-Tools ]; then
     git clone https://github.com/FoundationalModels/Fleet-Tools.git external/Fleet-Tools
@@ -256,30 +271,65 @@ download_drake_toulouse() {
     raw_demo_root="${DATA_DIR}/fleet_tools/demonstrations"
     processed_root="${DATA_DIR}/fleet_tools/demonstrations/processed"
     processed_demo_root="${DATA_DIR}/demo_drake"
+    demo_dir="${raw_demo_root}/${task}for${task}tool_0"
 
-    echo "[fleet-tools] generating ${DRAKE_EPISODES} episodes for ${task}"
-    python -m core.run \
-      cuda=False \
-      render=False \
-      env_name="${env_name}" \
-      num_envs=1 \
-      run_expert=True \
-      save_demonstrations=True \
-      demonstration_dir="${raw_demo_root}" \
-      start_episode_position=0 \
-      num_workers=0 \
-      task="${task_config}" \
-      train=FrankaDrakeEnv \
-      save_demo_suffix=tool_0 \
-      task.tool_fix_idx=0 \
-      max_episodes="${DRAKE_EPISODES}" \
-      num_episode="${DRAKE_EPISODES}" \
-      record_video=False \
-      training=False \
-      +task.data_collection=True \
-      task.env.use_image=False
+    max_total_attempts=$(( DRAKE_EPISODES * 30 ))
+    total_attempts=0
 
-    echo "[fleet-tools] collapsing ${task}"
+    while true; do
+      existing_demos=$(count_drake_demos "${demo_dir}")
+      echo "[fleet-tools] ${task}: ${existing_demos}/${DRAKE_EPISODES} demos collected"
+
+      if [ "${existing_demos}" -ge "${DRAKE_EPISODES}" ]; then
+        break
+      fi
+      if [ "${total_attempts}" -ge "${max_total_attempts}" ]; then
+        echo "[fleet-tools] ${task}: reached attempt limit (${max_total_attempts}) with ${existing_demos}/${DRAKE_EPISODES} demos — stopping" >&2
+        break
+      fi
+
+      remaining=$(( DRAKE_EPISODES - existing_demos ))
+      batch=$(( DRAKE_EPISODES < 100 ? DRAKE_EPISODES : 100 ))
+      echo "[fleet-tools] ${task}: running up to ${batch} more episodes (start_episode_position=${existing_demos})"
+
+      set +e
+      python -m core.run \
+        cuda=False \
+        render=False \
+        env_name="${env_name}" \
+        num_envs=1 \
+        run_expert=True \
+        save_demonstrations=True \
+        demonstration_dir="${raw_demo_root}" \
+        start_episode_position="${existing_demos}" \
+        num_workers=0 \
+        task="${task_config}" \
+        train=FrankaDrakeEnv \
+        save_demo_suffix=tool_0 \
+        task.tool_fix_idx=0 \
+        max_episodes="${remaining}" \
+        num_episode="${batch}" \
+        record_video=False \
+        training=False \
+        +task.data_collection=True \
+        task.env.use_image=False
+      run_exit=$?
+      set -e
+
+      total_attempts=$(( total_attempts + batch ))
+
+      if [ "${run_exit}" -ne 0 ]; then
+        echo "[fleet-tools] ${task}: run exited with code ${run_exit} (likely Drake segfault), retrying..."
+      fi
+    done
+
+    existing_demos=$(count_drake_demos "${demo_dir}")
+    if [ "${existing_demos}" -eq 0 ]; then
+      echo "[fleet-tools] ${task}: no demos collected — skipping collapse" >&2
+      continue
+    fi
+
+    echo "[fleet-tools] collapsing ${task} (${existing_demos} demos)"
     python -m scripts.collapse_dataset \
       -e "${task}for${task}" \
       --tool 0 \

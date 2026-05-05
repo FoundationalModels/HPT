@@ -48,9 +48,10 @@ export MUJOCO_GL=egl
 ## 🚶 Usage
 0. Check out ``quickstart.ipynb`` for how to use the pretrained HPTs.
 1. ```python -m hpt.run``` train policies on each environment. Add `+mode=debug`  for debugging.
-2. ```bash experiments/scripts/metaworld/train_test_metaworld_1task.sh test test 1 +mode=debug``` for example script.
-3. Change ``train.pretrained_dir`` for loading pre-trained trunk transformer. The model can be loaded either from local checkpoint folder or huggingface [repository](https://huggingface.co/liruiw/hpt-xlarge).
-4. Run the following scripts for mujoco experiments.
+2. ```python -m hpt.run_pretrain +mode=pretrain_scratch``` pre-train HPT from scratch with weighted multi-source sampling.
+3. ```bash experiments/scripts/metaworld/train_test_metaworld_1task.sh test test 1 +mode=debug``` for example script.
+4. Change ``train.pretrained_dir`` for loading pre-trained trunk transformer. The model can be loaded either from local checkpoint folder or huggingface [repository](https://huggingface.co/liruiw/hpt-xlarge).
+5. Run the following scripts for mujoco experiments.
 
 <details>
   <summary><span style="font-weight: bold;">Metaworld 20 Task Experiments</span></summary>
