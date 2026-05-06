@@ -106,6 +106,10 @@ def _get_dataset_rollout_fn(cfg, domain: str):
     return None
 
 
+def _checkpoint_dir(script_name: str, train_steps: int) -> str:
+    return os.path.join("outputs", f"{script_name}", f"{train_steps}")
+
+
 def _init_policy(cfg, domain_datasets, device):
     pretrained_exists = len(cfg.train.pretrained_dir) > len("output/") and os.path.exists(
         os.path.join(cfg.train.pretrained_dir, "trunk.pth")
@@ -229,7 +233,7 @@ def run(cfg):
     snapshot_every_iters = int(cfg.train.get("snapshot_every_iters", 0))
     resume_from = cfg.train.get("resume_from", "")
     auto_resume = bool(cfg.train.get("auto_resume", True))
-    training_state_path = os.path.join(cfg.output_dir, checkpoint_name)
+    latest_training_state_path = os.path.join(cfg.output_dir, checkpoint_name)
     last_snapshot_step = 0
 
     start_epoch = 0
@@ -293,10 +297,23 @@ def run(cfg):
             (epoch + 1) % checkpoint_every == 0 or train_steps >= cfg.train.total_iters
         )
         if should_save_checkpoint:
+            checkpoint_dir = _checkpoint_dir(cfg.script_name, train_steps)
+            os.makedirs(checkpoint_dir, exist_ok=True)
+            model_path = os.path.join(checkpoint_dir, "model.pth")
+            trunk_path = os.path.join(checkpoint_dir, "trunk.pth")
+            training_state_path = os.path.join(checkpoint_dir, checkpoint_name)
             policy.save(model_path)
             torch.save(policy.trunk.state_dict(), trunk_path)
             utils.save_training_state(
                 checkpoint_path=training_state_path,
+                model=policy,
+                optimizer=opt,
+                scheduler=sch,
+                epoch=epoch + 1,
+                global_step=train_steps,
+            )
+            utils.save_training_state(
+                checkpoint_path=latest_training_state_path,
                 model=policy,
                 optimizer=opt,
                 scheduler=sch,
@@ -309,7 +326,9 @@ def run(cfg):
             and train_steps - last_snapshot_step >= snapshot_every_iters
         )
         if should_save_snapshot:
-            snapshot_path = os.path.join(cfg.output_dir, f"training_state_{train_steps:07d}.pth")
+            snapshot_dir = _checkpoint_dir(cfg.script_name, train_steps)
+            os.makedirs(snapshot_dir, exist_ok=True)
+            snapshot_path = os.path.join(snapshot_dir, f"training_state_{train_steps:07d}.pth")
             utils.save_training_state(
                 checkpoint_path=snapshot_path,
                 model=policy,

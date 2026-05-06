@@ -3,7 +3,7 @@ output_dir: ${hydra:runtime.output_dir}
 domains: mujoco_metaworld, mujoco_robomimic, mujoco_adroit, drake_toulouse, pybullet_trifinger, isaac_arnold_image, maniskill # domains to train on
 wb_tag: "default" # wandb tag
 log_interval: 10 # how many steps before logging to wandb
-script_name: "" # log the running script
+script_name: sim_pretrain # log the running script
 pretrained_dir: "" # pretrained model directory
 # parallel_eval: False # use ray to do parallel evaluation
 # slurm_job_id: "" # the slurm job id for logging purposes
@@ -155,7 +155,7 @@ lr_scheduler:
 # training config
 train:
   total_epochs: 1000 # compatibility only; pretraining stops by total_iters
-  total_iters: 80000 # maximum training steps before termination
+  total_iters: 200_000 # maximum training steps before termination
   epoch_iters: 1000  # training steps in each epoch
   # validation_iters: 100 # maximum iterations for validation
   pretrained_dir: "" # pretrained model path for testing

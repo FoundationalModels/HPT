@@ -6,17 +6,15 @@
 # mujoco_metaworld and pybullet_trifinger have no raw files — they are generated
 # online from simulation, same as in local_download_sim_data.sh.
 #
-# All zarr directories are written to $DATA_DIR and symlinked at data/zarr_<domain>.
+# All zarr directories are written to $DATA_DIR and symlinked under data/.
 # A .zarr_complete sentinel marks fully finished zarrs so reruns are idempotent.
 #
 # Usage:
 #   ./local_gen_zarr.sh
 #   DATA_DIR=/path/to/drive DATASETS=mujoco_robomimic,mujoco_adroit ./local_gen_zarr.sh
 #
-# Training: generated zarrs have no encoder postfix (precompute_feat=False).
-# Pass these overrides to run_pretrain.py so it finds them:
-#   dataset.precompute_feat=False stem.precompute_feat=False \
-#   dataset.dataset_postfix="" dataset.dataset_encoder_postfix=""
+# Image datasets are generated with precomputed ResNet features and the default
+# run_pretrain.py cache suffix: zarr_<domain>_resnet_traj${EPISODE_CNT}.
 
 set -euo pipefail
 
@@ -110,7 +108,7 @@ create_raw_data_symlinks() {
 # ── per-domain zarr generators ────────────────────────────────────────────────
 
 generate_zarr_mujoco_metaworld() {
-  local zarr_name="zarr_mujoco_metaworld"
+  local zarr_name="zarr_mujoco_metaworld_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] mujoco_metaworld: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -138,8 +136,10 @@ LocalTrajDataset(
         episode_num_pertask=${METAWORLD_EPISODES},
     ),
     use_disk=True,
-    episode_cnt=${METAWORLD_EPISODES},
-    precompute_feat=False,
+    episode_cnt=${EPISODE_CNT},
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
     observation_horizon=4,
     action_horizon=8,
 )
@@ -149,7 +149,7 @@ PYEOF
 }
 
 generate_zarr_mujoco_robomimic() {
-  local zarr_name="zarr_mujoco_robomimic"
+  local zarr_name="zarr_mujoco_robomimic_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] mujoco_robomimic: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -181,7 +181,9 @@ LocalTrajDataset(
     ),
     use_disk=True,
     episode_cnt=${EPISODE_CNT},
-    precompute_feat=False,
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
     observation_horizon=4,
     action_horizon=8,
 )
@@ -191,7 +193,7 @@ PYEOF
 }
 
 generate_zarr_mujoco_adroit() {
-  local zarr_name="zarr_mujoco_adroit"
+  local zarr_name="zarr_mujoco_adroit_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] mujoco_adroit: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -222,7 +224,10 @@ LocalTrajDataset(
     ),
     use_disk=True,
     episode_cnt=${EPISODE_CNT},
-    precompute_feat=False,
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
+    image_encoder='resnet',
     observation_horizon=4,
     action_horizon=8,
 )
@@ -232,7 +237,7 @@ PYEOF
 }
 
 generate_zarr_drake_toulouse() {
-  local zarr_name="zarr_drake_toulouse"
+  local zarr_name="zarr_drake_toulouse_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] drake_toulouse: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -265,7 +270,9 @@ LocalTrajDataset(
     ),
     use_disk=True,
     episode_cnt=${EPISODE_CNT},
-    precompute_feat=False,
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
     observation_horizon=4,
     action_horizon=8,
 )
@@ -275,14 +282,14 @@ PYEOF
 }
 
 generate_zarr_pybullet_trifinger() {
-  local zarr_name="zarr_pybullet_trifinger"
+  local zarr_name="zarr_pybullet_trifinger_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] pybullet_trifinger: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
     return 0
   fi
   rm -rf "${DATA_DIR}/${zarr_name}" "${REPO_DIR}/data/${zarr_name}"
-  echo "[zarr] pybullet_trifinger: generating online (${PYBULLET_TRIFINGER_EPISODES} eps/task)"
+  echo "[zarr] pybullet_trifinger: generating online (${EPISODE_CNT} total eps)"
   pip install --quiet "trifinger_simulation" "numpy<2.0"
   python - <<PYEOF
 import os, sys
@@ -291,18 +298,20 @@ os.chdir('${REPO_DIR}')
 from env.pybullet.trifinger.rollout_runner import generate_dataset_rollouts
 from hpt.dataset.local_traj_dataset import LocalTrajDataset
 
-episode_per_task = ${PYBULLET_TRIFINGER_EPISODES}
 LocalTrajDataset(
     dataset_name='pybullet_trifinger',
     env_rollout_fn=generate_dataset_rollouts(
         env_names=['cube_reach', 'cube_push', 'cube_lift'],
         online=True,
         max_total_transition=500000,
-        episode_num_pertask=episode_per_task,
+        episode_num_pertask=${EPISODE_CNT},
     ),
     use_disk=True,
-    episode_cnt=episode_per_task * 3,
-    precompute_feat=False,
+    episode_cnt=${EPISODE_CNT},
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
+    image_encoder='resnet',
     observation_horizon=4,
     action_horizon=8,
 )
@@ -312,7 +321,7 @@ PYEOF
 }
 
 generate_zarr_isaac_arnold_image() {
-  local zarr_name="zarr_isaac_arnold_image"
+  local zarr_name="zarr_isaac_arnold_image_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] isaac_arnold_image: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -332,6 +341,10 @@ sys.path.insert(0, '${REPO_DIR}')
 os.chdir('${REPO_DIR}')
 from env.isaac.arnold_image.rollout_runner import generate_dataset_rollouts
 from hpt.dataset.local_traj_dataset import LocalTrajDataset
+from omegaconf import OmegaConf
+
+arnold_env_cfg = OmegaConf.load('experiments/configs/env/isaac_arnold_image.yaml')
+arnold_pad_after = int(arnold_env_cfg.dataset.pad_after)
 
 LocalTrajDataset(
     dataset_name='isaac_arnold_image',
@@ -345,8 +358,10 @@ LocalTrajDataset(
     ),
     use_disk=True,
     episode_cnt=${EPISODE_CNT},
-    pad_after=10,  # from isaac_arnold_image.yaml: action_horizon(8) + observation_horizon(4) - 2
-    precompute_feat=False,
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    pad_after=arnold_pad_after,
+    precompute_feat=True,
     observation_horizon=4,
     action_horizon=8,
 )
@@ -356,7 +371,7 @@ PYEOF
 }
 
 generate_zarr_maniskill() {
-  local zarr_name="zarr_maniskill"
+  local zarr_name="zarr_maniskill_resnet_traj${EPISODE_CNT}"
   if zarr_is_complete "${zarr_name}"; then
     echo "[zarr] maniskill: exists at ${DATA_DIR}/${zarr_name}"
     ln -sfn "$(realpath "${DATA_DIR}/${zarr_name}")" "${REPO_DIR}/data/${zarr_name}"
@@ -386,7 +401,10 @@ LocalTrajDataset(
     ),
     use_disk=True,
     episode_cnt=${EPISODE_CNT},
-    precompute_feat=False,
+    dataset_encoder_postfix='_resnet',
+    dataset_postfix='_traj${EPISODE_CNT}',
+    precompute_feat=True,
+    image_encoder='resnet',
     observation_horizon=4,
     action_horizon=8,
 )
